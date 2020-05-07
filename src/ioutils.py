@@ -21,7 +21,7 @@ def read_nbar(pardict):
         pardict["inputfile"],
         comment="#",
         delim_whitespace=True,
-        names=["zmin", "zmax", "nbar", "bias"],
+        names=["zmin", "zmax", "nz", "bias"],
         dtype="float",
     )
     data = dict(zip(df.keys(), df.T.values))
@@ -30,15 +30,17 @@ def read_nbar(pardict):
     return data
 
 
-def run_camb(pardict, zmid):
+def run_camb(pardict, zlow, zhigh):
     """ Runs an instance of CAMB given the cosmological parameters in pardict and redshifs in data
 
     Parameters
     ----------
     pardict: dict
         A dictionary of parameters read from the config file
-    zmid: np.array
-        An array containing the redshifts we want to compute forecasts for
+    zlow: np.array
+        An array containing the lower limits of the redshift bins
+    zhigh: np.array
+        An array containing the upper limits of the redshift bins
 
     Returns
     -------
@@ -49,6 +51,8 @@ def run_camb(pardict, zmid):
     import camb
 
     parlinear = copy.deepcopy(pardict)
+
+    zmid = (zhigh + zlow) / 2.0
 
     # Set the CAMB parameters
     pars = camb.CAMBparams()
@@ -88,21 +92,82 @@ def run_camb(pardict, zmid):
     )
 
     # Get some derived quantities
+    volume = (
+        float(pardict["skyarea"])
+        * (np.pi / 180.0) ** 2
+        * (results.comoving_radial_distance(zhigh) ** 3 - results.comoving_radial_distance(zlow) ** 3)
+        / 3.0
+    )
     da = results.angular_diameter_distance(zmid)
     hubble = results.hubble_parameter(zmid)
     fsigma8 = results.get_fsigma8()[::-1]
     sigma8 = results.get_sigma8()[::-1]
     r_d = results.get_derived_params()["rdrag"]
+    f = fsigma8 / sigma8
+
+    # Compute the non-linear BAO damping
+    Sigma_perp, Sigma_par = get_Sigmas(f, sigma8)
 
     camb_results = {
-        "z": zin,
+        "z": zmid,
+        "vol": volume,
         "k": kin,
         "Pk": p_lin,
         "D_A": da,
         "H": hubble,
-        "f": fsigma8 / sigma8,
+        "f": f,
         "sigma8": sigma8,
         "r_d": r_d,
+        "Sigma_perp": Sigma_perp,
+        "Sigma_par": Sigma_par,
     }
 
     return camb_results
+
+
+def get_Sigmas(f, sigma8):
+    """ Compute the nonlinear degradation of the BAO feature in the perpendicular and parallel direction
+
+    Parameters
+    ----------
+    f: np.array
+        The growth rate of structure in each redshift bin
+    sigma8: np.array
+        The linear matter variance in each redshift bin
+
+    Returns
+    -------
+    Sigma_perp: np.array
+        The BAO damping perpendicular to the line of sight
+    Sigma_par: np.array
+        The BAO damping parallel to the line of sight
+    """
+
+    # The growth factor G has been absorbed in sigma8(z) already.
+    Sigma_perp = 9.4 * sigma8 / 0.9
+    Sigma_par = (1.0 + f) * Sigma_perp
+
+    return Sigma_perp, Sigma_par
+
+
+def convert_nbar(data, volume, skyarea):
+    """ Converts the number of galaxies per sq. deg. per dz into number density in (h/Mpc)^3
+
+    Parameters
+    ----------
+    data: dict
+        A dictionary containing redshift edges, number of galaxy, biases. Gets updated with new nbar values
+    volume: np.array
+        An array containing the comoving volume of each redshift bin
+    skyarea: float
+        The skyarea in sq. deg.
+
+    Returns
+    -------
+    None
+    """
+
+    dz = data["zmax"] - data["zmin"]
+    data["nbar"] = skyarea * data["nz"] * dz / volume
+
+    return

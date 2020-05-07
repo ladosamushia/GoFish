@@ -3,3 +3,4 @@ scipy
 camb
 configobj
 pandas
+findiff

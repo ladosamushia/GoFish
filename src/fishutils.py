@@ -14,20 +14,20 @@ def Fish(cosmo, data):
     nk = len(cosmo["kin"][0])
     mu = np.linspace(0.0, 1.0, 100)
 
-    # Compute the reconstruction factors for each redshift bin
+    # Compute the reconstruction factors for each redshift bin. Has shape len(z)
     recon = compute_recon(cosmo, data)
 
-    # Compute all the kaiser factors for the various populations
+    # Compute all the kaiser factors for the various populations. Has shape (npop, len(z), len(mu))
     kaiser = np.einsum("nz,zm->nzm", cosmo["bias"], np.outer(cosmo["f"], mu ** 2))
 
-    # Compute the damping factors for all redshifts
+    # Compute the damping factors for all redshifts. Has shape (len(z), len(mu), len(k))
     Dpar = np.outer(cosmo["Sigma_par"] ** 2, np.outer(mu ** 2, cosmo["k"] ** 2))
     Dperp = np.outer(cosmo["Sigma_perp"] ** 2, np.outer(1.0 - mu ** 2, cosmo["k"] ** 2))
     Dfactor = np.exp(-(recon ** 2) * (Dpar + Dperp) / 2.0)
 
     # Precompute some derivative terms. The derivative of P(k) w.r.t. to alpha_perp/alpha_par
     # only needs doing once and then can be scaled by the ratios of sigma8 values. This works because we
-    # ignore the derivatives of Dfactor.
+    # ignore the derivatives of Dfactor. Has shape (2, len(k), len(mu))
     derPalpha = compute_deriv_alphas(cosmo, mu)
 
     for i, z in enumerate(cosmo["zin"]):

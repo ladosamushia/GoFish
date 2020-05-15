@@ -60,6 +60,9 @@ class InputData:
         dz = self.zmax - self.zmin
         self.nbar = skyarea * self.nz * dz / volume
 
+    def scale_bias(self, growth):
+        self.bias /= growth
+
 
 # This class contains everything we might need to set up to compute the fisher matrix
 class CosmoResults:
@@ -74,11 +77,13 @@ class CosmoResults:
             self.h,
             self.f,
             self.sigma8,
+            self.growth,
             self.r_d,
         ) = self.run_camb(pardict, zlow, zhigh)
         self.Sigma_perp, self.Sigma_par = self.get_Sigmas(self.f, self.sigma8)
 
-        self.mu = np.linspace(0.0, 1.0, 100)
+        self.kmin = np.amax([float(pardict["kmin"]), self.k[0]])
+        self.kmax = float(pardict["kmax"])
 
     def run_camb(self, pardict, zlow, zhigh):
 
@@ -100,6 +105,7 @@ class CosmoResults:
         """
 
         import camb
+        from scipy.interpolate import splrep
 
         parlinear = copy.deepcopy(pardict)
 
@@ -122,7 +128,7 @@ class CosmoResults:
         if "w0_fld" in parlinear.keys():
             pars.set_dark_energy(w=float(parlinear["w0_fld"]), dark_energy_model="fluid")
         pars.InitPower.set_params(As=float(parlinear["A_s"]), ns=float(parlinear["n_s"]))
-        pars.set_matter_power(redshifts=zmid[::-1], kmax=float(parlinear["kmax"]))
+        pars.set_matter_power(redshifts=np.concatenate([zmid[::-1], [0.0]]), kmax=float(parlinear["kmax"]))
         pars.set_cosmology(
             H0=float(parlinear["H0"]),
             omch2=float(parlinear["omega_cdm"]),
@@ -139,24 +145,25 @@ class CosmoResults:
 
         # Get the power spectrum
         kin, zin, pklin = results.get_matter_power_spectrum(
-            minkh=2.0e-5, maxkh=float(parlinear["kmax"]), npoints=2000
+            minkh=2.0e-5, maxkh=1.1 * float(parlinear["kmax"]), npoints=200
         )
 
         # Get some derived quantities
-        volume = (
-            float(pardict["skyarea"])
-            * (np.pi / 180.0) ** 2
-            * (results.comoving_radial_distance(zhigh) ** 3 - results.comoving_radial_distance(zlow) ** 3)
-            / 3.0
-        )
+        area = float(pardict["skyarea"]) * (np.pi / 180.0) ** 2
+        rmin = results.comoving_radial_distance(zlow) * float(parlinear["H0"]) / 100.0
+        rmax = results.comoving_radial_distance(zhigh) * float(parlinear["H0"]) / 100.0
+        volume = area / 3.0 * (rmax ** 3 - rmin ** 3)
         da = results.angular_diameter_distance(zmid)
         hubble = results.hubble_parameter(zmid)
-        fsigma8 = results.get_fsigma8()[::-1]
-        sigma8 = results.get_sigma8()[::-1]
+        fsigma8 = results.get_fsigma8()[::-1][1:]
+        sigma8 = results.get_sigma8()[::-1][1:]
         r_d = results.get_derived_params()["rdrag"]
         f = fsigma8 / sigma8
+        growth = sigma8 / results.get_sigma8()[-1]
 
-        return zin, volume, kin, pklin, da, hubble, f, sigma8, r_d
+        pk_splines = [splrep(kin, pklin[i + 1]) for i in range(len(zin[1:]))]
+
+        return zin[1:], volume, kin, pk_splines, da, hubble, f, sigma8, growth, r_d
 
     def get_Sigmas(self, f, sigma8):
         """ Compute the nonlinear degradation of the BAO feature in the perpendicular and parallel direction

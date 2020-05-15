@@ -4,3 +4,5 @@ camb
 configobj
 pandas
 findiff
+quadpy
+matplotlib

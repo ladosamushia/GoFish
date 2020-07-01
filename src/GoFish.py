@@ -1,8 +1,9 @@
 import sys
 import numpy as np
+import importlib
 from configobj import ConfigObj
-from src.TackleBox import Set_Bait, Fish
-from src.ioutils import CosmoResults, InputData
+from TackleBox import Set_Bait, Fish
+from ioutils import CosmoResults, InputData, write_fisher
 from scipy.linalg.lapack import dgesv
 
 if __name__ == "__main__":
@@ -33,5 +34,8 @@ if __name__ == "__main__":
         Catch = Fish(cosmo, data, iz, recon[iz], derPalpha)
         cov_lu, pivots, cov_inv, info = dgesv(Catch, identity)
         print(100.0 * np.sqrt(np.diag(cov_inv)[-3:]) / np.array([cosmo.f[iz] * cosmo.sigma8[iz], 1.0, 1.0]))
+        parameter_means = [cosmo.f[iz]*cosmo.sigma8[iz], cosmo.da[iz], cosmo.h[iz]]
+        print(parameter_means)
 
-    # Output the fisher matrix for each bin
+        # Output the fisher matrix for each bin
+        write_fisher(pardict, cov_inv, cosmo.z[iz], parameter_means)

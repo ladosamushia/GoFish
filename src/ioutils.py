@@ -1,6 +1,6 @@
 import copy
 import numpy as np
-
+from pathlib import Path
 
 class InputData:
     def __init__(self, pardict):
@@ -188,3 +188,34 @@ class CosmoResults:
         Sigma_par = (1.0 + f) * Sigma_perp
 
         return Sigma_perp, Sigma_par
+
+def write_fisher(pardict, cov_inv, redshift, parameter_means):
+    """ Write Fisher predictions to text files
+
+    Parameters
+    ---------
+    pardict: configobj.ConfigObj
+        A dictionary containing input parameters
+    cov_inv: np.ndarray
+        A 2D covariance matrix. fs8, da, h are the last three columns/rows
+    redshift: np.float
+        Mean redshift of that sample. Used in the filename
+    parameter_means: list
+        Contains mean values of fs8, da, h
+        
+
+    Will write a 3x3 covariance matrix of fs8, da, h and the true values of fs8, da, h.
+    """
+
+    # Renormalize covariance from alpha's to DA/H
+    for i in range(1,3):
+        cov_inv[-3,-i] *= parameter_means[i]
+        cov_inv[-i,-3] *= parameter_means[i]
+        for j in range(1,3):
+            cov_inv[-i,-j] *= parameter_means[i]*parameter_means[j]
+
+    cov_filename = pardict["outputfile"] + "_cov_" + format(redshift, '.2f') +".txt"
+    data_filename = pardict["outputfile"] + "_data_" + format(redshift, '.2f') +".txt"
+    
+    np.savetxt(cov_filename, cov_inv[-3:,-3:])
+    np.savetxt(data_filename, parameter_means)

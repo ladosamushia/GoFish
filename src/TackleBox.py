@@ -193,7 +193,6 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
     # using the ratio of sigma8 values, which is okay to do as the power spectra are all linear
     pkval = splev(k, cosmo.pk[iz])
     pksmoothval = splev(k, cosmo.pksmooth[iz])
-    pks = pksmoothval if BAO_only else pkval
     coords = [[kval, muval] for kval in k for muval in mu]
     derPalphaval = [
         derPalpha[i](coords).reshape(len(k), len(mu)) * (cosmo.sigma8[iz] / cosmo.sigma8[0]) ** 2
@@ -208,7 +207,8 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
                 npop,
                 npk,
                 kaiser[:, j],
-                pks[i],
+                pkval[i],
+                pksmoothval[i],
                 muval,
                 [derPalphaval[0][i, j], derPalphaval[1][i, j]],
                 cosmo.f[iz],
@@ -280,7 +280,7 @@ def compute_inv_cov(npop, npk, kaiser, pk, nbar):
     return covariance, cov_inv
 
 
-def compute_full_deriv(npop, npk, kaiser, pk, mu, derPalpha, f, sigma8, BAO_only):
+def compute_full_deriv(npop, npk, kaiser, pk, pksmooth, mu, derPalpha, f, sigma8, BAO_only):
     """ Computes the derivatives of the power spectrum as a function of
         biases*sigma8, fsigma8, alpha_perp and alpha_par (in that order)
         at a given k, mu and redshift
@@ -297,6 +297,8 @@ def compute_full_deriv(npop, npk, kaiser, pk, mu, derPalpha, f, sigma8, BAO_only
         The kaiser factors for each galaxy population at a fixed mu and redshift. Has length npop.
     pk: float
         The power spectrum value at the given k, mu and redshift values.
+    pk: float
+        The smoothed power spectrum value at the given k, mu and redshift values.
     mu: float
         The mu value for the current call.
     derPalpha: list
@@ -343,10 +345,10 @@ def compute_full_deriv(npop, npk, kaiser, pk, mu, derPalpha, f, sigma8, BAO_only
         # For BAO_only we only include information on the alpha parameters
         # from the BAO wiggles, and not the Kaiser factor
         derP[npop + 1, :] = [
-            kaiser[i] * kaiser[j] * derPalpha[0] * pk for i in range(npop) for j in range(i, npop)
+            kaiser[i] * kaiser[j] * derPalpha[0] * pksmooth for i in range(npop) for j in range(i, npop)
         ]
         derP[npop + 2, :] = [
-            kaiser[i] * kaiser[j] * derPalpha[1] * pk for i in range(npop) for j in range(i, npop)
+            kaiser[i] * kaiser[j] * derPalpha[1] * pksmooth for i in range(npop) for j in range(i, npop)
         ]
     else:
         # Derivative of mu'**2 w.r.t alpha_perp. Derivative w.r.t. alpha_par is -dmudalpha

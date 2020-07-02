@@ -51,21 +51,21 @@ def compute_deriv_alphas(cosmo, BAO_only=True):
     dalpha = 0.0025
 
     nmu = 100
-    musq = np.linspace(0.0, 1.0, nmu)
+    mu = np.linspace(0.0, 1.0, nmu)
 
     pkarray = np.empty((2 * order + 1, 2 * order + 1, len(cosmo.k), nmu))
     for i in range(-order, order + 1):
         alpha_perp = 1.0 + i * dalpha
         for j in range(-order, order + 1):
             alpha_par = 1.0 + j * dalpha
-            kprime = np.outer(cosmo.k, np.sqrt((1.0 - musq) / alpha_perp ** 2 + musq / alpha_par ** 2))
+            kprime = np.outer(cosmo.k, np.sqrt((1.0 - mu ** 2) / alpha_perp ** 2 + mu ** 2 / alpha_par ** 2))
             if BAO_only:
                 pkarray[i + order, j + order] = splev(kprime, cosmo.pksmooth[0]) / splev(kprime, cosmo.pk[0])
             else:
                 pkarray[i + order, j + order] = splev(kprime, cosmo.pk[0])
 
     derPalpha = [FinDiff(i, dalpha, acc=4)(pkarray)[order, order] for i in range(2)]
-    derPalpha_interp = [RegularGridInterpolator([cosmo.k, musq], derPalpha[i]) for i in range(2)]
+    derPalpha_interp = [RegularGridInterpolator([cosmo.k, mu], derPalpha[i]) for i in range(2)]
 
     return derPalpha_interp
 

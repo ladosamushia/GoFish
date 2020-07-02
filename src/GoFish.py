@@ -25,17 +25,17 @@ if __name__ == "__main__":
     data.scale_bias(cosmo.growth)
 
     # Precompute some things we might need for the Fisher matrix
-    recon, derPalpha = Set_Bait(cosmo, data)
+    recon, derPalpha = Set_Bait(cosmo, data, BAO_only=pardict.as_bool("BAO_only"))
 
     # Loop over redshifts and compute the Fisher matrix and output the 3x3 matrix
     identity = np.eye(len(data.nbar) + 3)
     for iz in range(len(cosmo.z)):
         print("z = {0:.2f}, V = {1:.2e} (Gpc/h)^3".format(cosmo.z[iz], cosmo.volume[iz] / 1e9))
-        Catch = Fish(cosmo, data, iz, recon[iz], derPalpha)
-        cov_lu, pivots, cov_inv, info = dgesv(Catch, identity)
-        print(100.0 * np.sqrt(np.diag(cov_inv)[-3:]) / np.array([cosmo.f[iz] * cosmo.sigma8[iz], 1.0, 1.0]))
-        parameter_means = [cosmo.f[iz]*cosmo.sigma8[iz], cosmo.da[iz], cosmo.h[iz]]
+        Catch = Fish(cosmo, data, iz, recon[iz], derPalpha, BAO_only=pardict.as_bool("BAO_only"))
+        cov_lu, pivots, cov, info = dgesv(Catch, identity)
+        print(100.0 * np.sqrt(np.diag(cov)[-3:]) / np.array([cosmo.f[iz] * cosmo.sigma8[iz], 1.0, 1.0]))
+        parameter_means = [cosmo.f[iz] * cosmo.sigma8[iz], cosmo.da[iz], cosmo.h[iz]]
         print(parameter_means)
 
         # Output the fisher matrix for each bin
-        write_fisher(pardict, cov_inv, cosmo.z[iz], parameter_means)
+        write_fisher(pardict, cov, cosmo.z[iz], parameter_means)

@@ -1,6 +1,6 @@
 import copy
 import numpy as np
-from pathlib import Path
+
 
 class InputData:
     def __init__(self, pardict):
@@ -73,6 +73,7 @@ class CosmoResults:
             self.volume,
             self.k,
             self.pk,
+            self.pksmooth,
             self.da,
             self.h,
             self.f,
@@ -91,17 +92,37 @@ class CosmoResults:
 
         Parameters
         ----------
-        pardict: dict
+        pardict: configobj.ConfigObj
             A dictionary of parameters read from the config file
-        zlow: np.array
+        zlow: np.ndarray
             An array containing the lower limits of the redshift bins
-        zhigh: np.array
+        zhigh: np.ndarray
             An array containing the upper limits of the redshift bins
 
         Returns
         -------
-        camb_results: dict
-            A dictionary collating all the cosmological parameters we might need
+        zmid: np.ndarray
+            The midpoint of each redshift bin. The value at which all cosmological quantities are computed
+        volume: np.ndarray
+            The volume of each redshift bin in Mpc^3/h^3
+        kin: np.ndarray
+            The k values of the computed linear power spectra in unit h/Mpc
+        pk_splines: list
+            A list of scipy.intepolate.splrep objects. Each one contains a spline representation of the linear
+            power spectrum in units of Mpc^3/h^3 at a particular zmid value. Can be interpolated using scipy.interpolate.splev
+        pksmooth_splines: list
+            A list of scipy.intepolate.splrep objects. Each one contains a spline representation of the smoothed linear
+            power spectrum (the dewiggled spectrum) at a particular zmid value. Can be interpolated using scipy.interpolate.splev
+        da: np.ndarray
+            The angular diameter distance in Mpc at each zmid
+        hubble: np.ndarray
+            The Hubble parameter H(z) in km/s/Mpc at each zmid
+        f: np.ndarray
+            The growth rate of structure at each zmid
+        sigma8: np.ndarray
+            The square root of the variance in the matter field in spheres of radius 8 Mpc/h at each zmid. Has units Mpc/h.
+        r_d: float
+            The radius of the sound horizon at the baryon-drag epoch in Mpc
         """
 
         import camb
@@ -162,24 +183,27 @@ class CosmoResults:
         growth = sigma8 / results.get_sigma8()[-1]
 
         pk_splines = [splrep(kin, pklin[i + 1]) for i in range(len(zin[1:]))]
+        pksmooth_splines = [
+            splrep(kin, self.smooth_hinton2017(kin, pklin[i + 1])) for i in range(len(zin[1:]))
+        ]
 
-        return zin[1:], volume, kin, pk_splines, da, hubble, f, sigma8, growth, r_d
+        return zmid, volume, kin, pk_splines, pksmooth_splines, da, hubble, f, sigma8, growth, r_d
 
     def get_Sigmas(self, f, sigma8):
         """ Compute the nonlinear degradation of the BAO feature in the perpendicular and parallel direction
 
         Parameters
         ----------
-        f: np.array
+        f: np.ndarray
             The growth rate of structure in each redshift bin
-        sigma8: np.array
+        sigma8: np.ndarray
             The linear matter variance in each redshift bin
 
         Returns
         -------
-        Sigma_perp: np.array
+        Sigma_perp: np.ndarray
             The BAO damping perpendicular to the line of sight
-        Sigma_par: np.array
+        Sigma_par: np.ndarray
             The BAO damping parallel to the line of sight
         """
 
@@ -188,6 +212,41 @@ class CosmoResults:
         Sigma_par = (1.0 + f) * Sigma_perp
 
         return Sigma_perp, Sigma_par
+
+    def smooth_hinton2017(self, ks, pk, degree=13, sigma=1, weight=0.5):
+        """ Smooth power spectrum based on Hinton et. al., 2017 polynomial method
+
+        Parameters
+        ----------
+        ks: np.ndarray
+            The k values of the input power spectrum
+        pk: np.ndarray
+            The input power spectrum
+        degree: int (optional)
+            The polynomial order used to fit the power spectrum. Default = 13
+        sigma: float (optional)
+            The width of the Gaussian weighting scheme used to avoid overfitting
+            the BAO wiggles. Default = 1.0
+        weight: float (optional)
+            The amplitude of the Gaussian weighting scheme used to avoid overfitting
+            the BAO wiggles. Default = 0.5. Hence default weights are 1.0 - 0.5*exp(-k^2/2.0)
+
+        Returns
+        -------
+        pk_smoothed: np.ndarray
+            The smooth (dewiggled) power spectrum at the input ks values
+        """
+
+        log_ks = np.log(ks)
+        gauss = np.exp(-0.5 * ((log_ks - log_ks[np.argmax(pk)]) / sigma) ** 2)
+        w = np.ones(pk.size) - weight * gauss
+        z = np.polyfit(log_ks, np.log(pk), degree, w=w)
+        p = np.poly1d(z)
+        polyval = p(log_ks)
+        pk_smoothed = np.exp(polyval)
+
+        return pk_smoothed
+
 
 def write_fisher(pardict, cov_inv, redshift, parameter_means):
     """ Write Fisher predictions to text files
@@ -208,14 +267,16 @@ def write_fisher(pardict, cov_inv, redshift, parameter_means):
     """
 
     # Renormalize covariance from alpha's to DA/H
-    for i in range(1,3):
-        cov_inv[-3,-i] *= parameter_means[i]
-        cov_inv[-i,-3] *= parameter_means[i]
-        for j in range(1,3):
-            cov_inv[-i,-j] *= parameter_means[i]*parameter_means[j]
+    for i in range(1, 3):
+        cov_inv[-3, -i] *= parameter_means[i]
+        cov_inv[-i, -3] *= parameter_means[i]
+        for j in range(1, 3):
+            cov_inv[-i, -j] *= parameter_means[i] * parameter_means[j]
 
-    cov_filename = pardict["outputfile"] + "_cov_" + format(redshift, '.2f') +".txt"
-    data_filename = pardict["outputfile"] + "_data_" + format(redshift, '.2f') +".txt"
-    
-    np.savetxt(cov_filename, cov_inv[-3:,-3:])
+    cov_filename = pardict["outputfile"] + "_cov_" + format(redshift, ".2f") + ".txt"
+    data_filename = pardict["outputfile"] + "_data_" + format(redshift, ".2f") + ".txt"
+
+    np.savetxt(cov_filename, cov_inv[-3:, -3:])
     np.savetxt(data_filename, parameter_means)
+
+    return

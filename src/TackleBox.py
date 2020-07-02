@@ -60,7 +60,7 @@ def compute_deriv_alphas(cosmo, BAO_only=True):
             alpha_par = 1.0 + j * dalpha
             kprime = np.outer(cosmo.k, np.sqrt((1.0 - mu ** 2) / alpha_perp ** 2 + mu ** 2 / alpha_par ** 2))
             if BAO_only:
-                pkarray[i + order, j + order] = splev(kprime, cosmo.pksmooth[0]) / splev(kprime, cosmo.pk[0])
+                pkarray[i + order, j + order] = splev(kprime, cosmo.pk[0]) / splev(kprime, cosmo.pksmooth[0])
             else:
                 pkarray[i + order, j + order] = splev(kprime, cosmo.pk[0])
 
@@ -215,11 +215,11 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
                 cosmo.sigma8[iz],
                 BAO_only,
             )
-            derP *= Dfactor[j, i]
+            # derP *= Dfactor[j, i]
 
             covP, cov_inv = compute_inv_cov(npop, npk, kaiser[:, j], pkval[i], data.nbar[:, iz])
 
-            Shoal[:, :, i, j] = kval ** 2 * (derP @ cov_inv @ derP.T)
+            Shoal[:, :, i, j] = kval ** 2 * (derP @ cov_inv @ derP.T) * Dfactor[j, i]
 
     return Shoal
 

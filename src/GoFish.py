@@ -31,7 +31,7 @@ if __name__ == "__main__":
     identity = np.eye(len(data.nbar) + 3)
     for iz in range(len(cosmo.z)):
         print("z = {0:.2f}, V = {1:.2e} (Gpc/h)^3".format(cosmo.z[iz], cosmo.volume[iz] / 1e9))
-        Catch = Fish(cosmo, data, iz, recon[iz], derPalpha, BAO_only=pardict.as_bool("BAO_only"))
+        Catch = Fish(cosmo, data, iz, recon[iz], derPalpha, pardict.as_bool("BAO_only"))
         cov_lu, pivots, cov, info = dgesv(Catch, identity)
         print(100.0 * np.sqrt(np.diag(cov)[-3:]) / np.array([cosmo.f[iz] * cosmo.sigma8[iz], 1.0, 1.0]))
         parameter_means = [cosmo.f[iz] * cosmo.sigma8[iz], cosmo.da[iz], cosmo.h[iz]]

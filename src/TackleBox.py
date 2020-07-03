@@ -7,7 +7,7 @@ from quadpy import quad
 from itertools import combinations_with_replacement
 
 
-def Set_Bait(cosmo, data, BAO_only=True):
+def Set_Bait(cosmo, data, BAO_only=False):
 
     # Compute the reconstruction factors for each redshift bin. Has shape len(z)
     recon = compute_recon(cosmo, data)
@@ -25,8 +25,8 @@ def compute_recon(cosmo, data):
     muconst = 0.6
     kconst = 0.16
 
-    nP = [0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 6.0, 10.0]
-    r_factor = [1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.52, 0.5]
+    nP = [0.0, 0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 6.0, 10.0]
+    r_factor = [1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.52, 0.5]
     r_spline = splrep(nP, r_factor)
 
     recon = np.empty(len(cosmo.z))
@@ -43,11 +43,11 @@ def compute_recon(cosmo, data):
     return recon
 
 
-def compute_deriv_alphas(cosmo, BAO_only=True):
+def compute_deriv_alphas(cosmo, BAO_only=False):
 
     from scipy.interpolate import RegularGridInterpolator
 
-    order = 5
+    order = 4
     dalpha = 0.0025
 
     nmu = 100
@@ -190,14 +190,18 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
 
     # Use our splines to compute the power spectrum and derivatives at the redshift as a function of k and mu.
     # To save space we only stored the derivatives at redshift 0, but now scale these to the correct redshift
-    # using the ratio of sigma8 values, which is okay to do as the power spectra are all linear
+    # using the ratio of sigma8 values, which is okay to do as the power spectra are all linear. Note this scaling
+    # is only necessary for full shape fits, the BAO wiggles do not get scaled by the sigma8 ratio.
     pkval = splev(k, cosmo.pk[iz])
     pksmoothval = splev(k, cosmo.pksmooth[iz])
     coords = [[kval, muval] for kval in k for muval in mu]
-    derPalphaval = [
-        derPalpha[i](coords).reshape(len(k), len(mu)) * (cosmo.sigma8[iz] / cosmo.sigma8[0]) ** 2
-        for i in range(2)
-    ]
+    if BAO_only:
+        derPalphaval = [derPalpha[i](coords).reshape(len(k), len(mu)) for i in range(2)]
+    else:
+        derPalphaval = [
+            derPalpha[i](coords).reshape(len(k), len(mu)) * (cosmo.sigma8[iz] / cosmo.sigma8[0]) ** 2
+            for i in range(2)
+        ]
 
     # Loop over each k and mu value and compute the Fisher information for the cosmological parameters
     for i, kval in enumerate(k):
@@ -215,11 +219,13 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
                 cosmo.sigma8[iz],
                 BAO_only,
             )
-            # derP *= Dfactor[j, i]
+            derP *= Dfactor[j, i]
 
-            covP, cov_inv = compute_inv_cov(npop, npk, kaiser[:, j], pkval[i], data.nbar[:, iz])
+            covP, cov_inv = compute_inv_cov(
+                npop, npk, kaiser[:, j], pkval[i] * Dfactor[j, i], data.nbar[:, iz]
+            )
 
-            Shoal[:, :, i, j] = kval ** 2 * (derP @ cov_inv @ derP.T) * Dfactor[j, i]
+            Shoal[:, :, i, j] = kval ** 2 * (derP @ cov_inv @ derP.T)
 
     return Shoal
 
@@ -297,7 +303,7 @@ def compute_full_deriv(npop, npk, kaiser, pk, pksmooth, mu, derPalpha, f, sigma8
         The kaiser factors for each galaxy population at a fixed mu and redshift. Has length npop.
     pk: float
         The power spectrum value at the given k, mu and redshift values.
-    pk: float
+    pksmooth: float
         The smoothed power spectrum value at the given k, mu and redshift values.
     mu: float
         The mu value for the current call.

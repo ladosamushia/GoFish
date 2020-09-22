@@ -12,6 +12,9 @@ class InputData:
         self.nz = df[:, 2::2].T
         self.bias = df[:, 3::2].T
 
+        # Sort out any tracers without galaxies in a particular redshift bin
+        self.remove_null_tracers()
+
     def read_nbar(self, pardict):
         """ Reads redshift edges, number density, and bias from an input file
 
@@ -62,6 +65,25 @@ class InputData:
 
     def scale_bias(self, growth):
         self.bias /= growth
+
+    def remove_null_tracers(self):
+
+        """ Sorts out any tracers that have zero number density in a particular redshift bin.
+            Does this my setting the bias to 0.0 in that bin and the number density to a very small number.
+            This ensures their is no information in that bin from that tracer.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+
+        index = np.where(self.nz == 0)
+        self.bias[index] = 0.0
+        self.nz[index] = 1.0e-30
 
 
 # This class contains everything we might need to set up to compute the fisher matrix
@@ -261,17 +283,10 @@ def write_fisher(pardict, cov_inv, redshift, parameter_means):
         Mean redshift of that sample. Used in the filename
     parameter_means: list
         Contains mean values of fs8, da, h
-        
+
 
     Will write a 3x3 covariance matrix of fs8, da, h and the true values of fs8, da, h.
     """
-
-    # Renormalize covariance from alpha's to DA/H
-    for i in range(1, 3):
-        cov_inv[-3, -i] *= parameter_means[i]
-        cov_inv[-i, -3] *= parameter_means[i]
-        for j in range(1, 3):
-            cov_inv[-i, -j] *= parameter_means[i] * parameter_means[j]
 
     cov_filename = pardict["outputfile"] + "_cov_" + format(redshift, ".2f") + ".txt"
     data_filename = pardict["outputfile"] + "_data_" + format(redshift, ".2f") + ".txt"

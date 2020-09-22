@@ -43,6 +43,34 @@ def compute_recon(cosmo, data):
     return recon
 
 
+def CovRenorm(cov, parameter_means):
+    """ Renormalises a covariance matrix with last 3 entries fsigma8, alpha_perp, alpha_par to last 3 entries
+        fsigma8, Da, H. Assumes the input covariance matrix is in exactly this order.
+
+    Parameters
+    ----------
+    cov: np.ndarray
+        A 2D covariance matrix. fs8, da, h are the last three columns/rows
+    parameter_means: list
+        Contains mean values of fs8, da, h
+
+    Returns
+    -------
+    cov_renorm: np.ndarray
+        The converted covariance matrix for the parameters [b_0*sigma8 ... b_npop*sigma8], fsigma8, Da, H
+    """
+
+    # Set up the jacobian of the transformation
+    jacobian = np.identity(cov.shape[0])
+    jacobian[-2, -2] = parameter_means[1]
+    jacobian[-1, -1] = -parameter_means[2]
+
+    # Renormalize covariance from alpha's to DA/H
+    cov_renorm = jacobian @ cov @ jacobian.T
+
+    return cov_renorm
+
+
 def compute_deriv_alphas(cosmo, BAO_only=False):
 
     from scipy.interpolate import RegularGridInterpolator
@@ -70,7 +98,7 @@ def compute_deriv_alphas(cosmo, BAO_only=False):
     return derPalpha_interp
 
 
-def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True):
+def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True, GoFast=False):
     """ Computes the Fisher information on cosmological parameters biases*sigma8, fsigma8, alpha_perp and alpha_par
         for a given redshift bin by integrating a separate function (CastNet) over k and mu.
 
@@ -95,7 +123,11 @@ def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True):
     BAO_only: logical
         If True compute derivatives w.r.t. to alpha_perp and alpha_par using only the BAO feature in the
         power spectra. Otherwise use the full power spectrum and the kaiser factor. The former matches a standard
-        BAO analysis, the latter is more akin to a 'full-shape' analysis.
+        BAO analysis, the latter is more akin to a 'full-shape' analysis. Default = True
+    GoFast: logical
+        If True uses Simpson's rule for the k and mu integration with 400 k-bins and 100 mu-bins, so fast but
+        but approximate. Otherwise, use vector-valued quadrature integration. This latter option can be very slow for
+        many tracers. Default = False.
 
     Returns
     -------
@@ -107,25 +139,38 @@ def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True):
     npop = np.shape(data.nbar)[0]
     npk = int(npop * (npop + 1) / 2)
 
-    # Integral over mu
-    OneFish = lambda *args: quad(CastNet, 0.0, 1.0, args=args, limit=1000)[0]
+    # Uses Simpson's rule or adaptive quadrature to integrate over all k and mu.
+    if GoFast:
 
-    # Integral over k
-    # ManyFish = quad(
-    #    OneFish,
-    #    cosmo.kmin,
-    #    cosmo.kmax,
-    #    args=(iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only),
-    #    limit=1000,
-    # )[0]
+        # mu and k values for Simpson's rule
+        muvec = np.linspace(0.0, 1.0, 100)
+        kvec = np.linspace(cosmo.kmin, cosmo.kmax, 400)
 
-    muvec = np.linspace(0.0, 1.0, 100)
-    kvec = np.linspace(cosmo.kmin, cosmo.kmax, 1000)
-    ManyFish = simps(
-        simps(CastNet(muvec, kvec, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only), x=muvec, axis=-1),
-        x=kvec,
-        axis=-1,
-    )
+        # 2D integration
+        ManyFish = simps(
+            simps(
+                CastNet(muvec, kvec, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only), x=muvec, axis=-1
+            ),
+            x=kvec,
+            axis=-1,
+        )
+
+    else:
+        # Integral over mu
+        OneFish = lambda *args: quad(CastNet, 0.0, 1.0, args=args, limit=1000, epsabs=1.0e-5, epsrel=1.0e-5)[
+            0
+        ]
+
+        # Integral over k
+        ManyFish = quad(
+            OneFish,
+            cosmo.kmin,
+            cosmo.kmax,
+            args=(iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only),
+            limit=1000,
+            epsabs=1.0e-5,
+            epsrel=1.0e-5,
+        )[0]
 
     # Multiply by the necessary prefactors
     ManyFish *= cosmo.volume[iz] / (2.0 * np.pi ** 2)
@@ -277,11 +322,11 @@ def compute_inv_cov(npop, npk, kaiser, pk, nbar):
             if n2 == n3:
                 pk23 += 1.0 / nbar[n2]
             if n2 == n4:
-                pk14 += 1.0 / nbar[n1]
+                pk24 += 1.0 / nbar[n2]
             covariance[ps1, ps2] = pk13 * pk24 + pk14 * pk23
 
     identity = np.eye(npk)
-    cov_lu, pivots, cov_inv, info = dgesv(covariance, identity)
+    cov_inv = dgesv(covariance, identity)[2]
 
     return covariance, cov_inv
 

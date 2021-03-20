@@ -48,7 +48,7 @@ if __name__ == "__main__":
             # Print the parameter means and errors
             errs = 100.0 * np.sqrt(np.diag(cov_renorm)[-3:]) / means
             print(
-                " {0:.2f}     {1:.2f}      {2:.3f}       {3:.2f}         {4:.1f}       {5:.2f}        {6:.1f}       {7:.2f}".format(
+                " {0:.2f}     {1:.4f}    {2:.3f}       {3:.2f}         {4:.1f}       {5:.2f}        {6:.1f}       {7:.2f}".format(
                     cosmo.z[iz],
                     cosmo.volume[iz] / 1e9,
                     means[0],
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
         else:
             print(
-                " {0:.2f}     {1:.2f}      {2:.3f}         -          {4:.1f}         -         {6:.1f}         -".format(
+                " {0:.2f}     {1:.4f}    {2:.3f}         -          {4:.1f}         -         {6:.1f}         -".format(
                     cosmo.z[iz],
                     cosmo.volume[iz] / 1e9,
                     means[0],

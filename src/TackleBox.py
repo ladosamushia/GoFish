@@ -16,17 +16,18 @@ def Set_Bait(cosmo, data, BAO_only=False):
     # only needs doing once and then can be scaled by the ratios of sigma8 values. This works because we
     # ignore the derivatives of Dfactor. Has shape (2, len(k), len(mu))
     derPalpha = compute_deriv_alphas(cosmo, BAO_only=BAO_only)
+    derPalpha_BAO_only = compute_deriv_alphas(cosmo, BAO_only=True)
 
-    return recon, derPalpha
+    return recon, derPalpha, derPalpha_BAO_only
 
 
 def compute_recon(cosmo, data):
 
     muconst = 0.6
-    kconst = 0.16
+    kconst = 0.14
 
-    nP = [0.0, 0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 6.0, 10.0]
-    r_factor = [1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.52, 0.5]
+    nP = [0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 6.0, 10.0]
+    r_factor = [1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.52, 0.5]
     r_spline = splrep(nP, r_factor)
 
     recon = np.empty(len(cosmo.z))
@@ -76,29 +77,25 @@ def compute_deriv_alphas(cosmo, BAO_only=False):
     from scipy.interpolate import RegularGridInterpolator
 
     order = 4
-    dalpha = 0.0025
-
     nmu = 100
+    dk = 0.0001
     mu = np.linspace(0.0, 1.0, nmu)
 
-    pkarray = np.empty((2 * order + 1, 2 * order + 1, len(cosmo.k), nmu))
+    pkarray = np.empty((2 * order + 1, len(cosmo.k)))
     for i in range(-order, order + 1):
-        alpha_perp = 1.0 + i * dalpha
-        for j in range(-order, order + 1):
-            alpha_par = 1.0 + j * dalpha
-            kprime = np.outer(cosmo.k, np.sqrt((1.0 - mu ** 2) / alpha_perp ** 2 + mu ** 2 / alpha_par ** 2))
-            if BAO_only:
-                pkarray[i + order, j + order] = splev(kprime, cosmo.pk[0]) / splev(kprime, cosmo.pksmooth[0])
-            else:
-                pkarray[i + order, j + order] = splev(kprime, cosmo.pk[0])
-
-    derPalpha = [FinDiff(i, dalpha, acc=4)(pkarray)[order, order] for i in range(2)]
+        kinterp = cosmo.k + i * dk
+        if BAO_only:
+            pkarray[i + order] = splev(kinterp, cosmo.pk[0]) / splev(kinterp, cosmo.pksmooth[0])
+        else:
+            pkarray[i + order] = splev(kinterp, cosmo.pk[0])
+    derPk = FinDiff(0, dk, acc=4)(pkarray)[order]
+    derPalpha = [np.outer(derPk * cosmo.k, (mu ** 2 - 1.0)), -np.outer(derPk * cosmo.k, (mu ** 2))]
     derPalpha_interp = [RegularGridInterpolator([cosmo.k, mu], derPalpha[i]) for i in range(2)]
 
     return derPalpha_interp
 
 
-def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True, GoFast=False):
+def Fish(cosmo, kmin, kmax, data, iz, recon, derPalpha, BAO_only=True, GoFast=False):
     """ Computes the Fisher information on cosmological parameters biases*sigma8, fsigma8, alpha_perp and alpha_par
         for a given redshift bin by integrating a separate function (CastNet) over k and mu.
 
@@ -144,7 +141,7 @@ def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True, GoFast=False):
 
         # mu and k values for Simpson's rule
         muvec = np.linspace(0.0, 1.0, 100)
-        kvec = np.linspace(cosmo.kmin, cosmo.kmax, 400)
+        kvec = np.linspace(kmin, kmax, 400)
 
         # 2D integration
         ManyFish = simps(
@@ -164,8 +161,8 @@ def Fish(cosmo, data, iz, recon, derPalpha, BAO_only=True, GoFast=False):
         # Integral over k
         ManyFish = quad(
             OneFish,
-            cosmo.kmin,
-            cosmo.kmax,
+            kmin,
+            kmax,
             args=(iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only),
             limit=1000,
             epsabs=1.0e-5,
@@ -229,8 +226,8 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
 
     # Compute the BAO damping factor parameter after reconstruction at the redshift of interest
     # as a function of k and mu.
-    Dpar = np.outer(np.outer(mu ** 2, k ** 2), cosmo.Sigma_par[iz] ** 2).reshape(len(mu), len(k))
-    Dperp = np.outer(np.outer(1.0 - mu ** 2, k ** 2), cosmo.Sigma_perp[iz] ** 2).reshape(len(mu), len(k))
+    Dpar = np.outer(mu ** 2, k ** 2) * cosmo.Sigma_par[iz] ** 2
+    Dperp = np.outer(1.0 - mu ** 2, k ** 2) * cosmo.Sigma_perp[iz] ** 2
     Dfactor = np.exp(-(recon ** 2) * (Dpar + Dperp) / 2.0)
 
     # Use our splines to compute the power spectrum and derivatives at the redshift as a function of k and mu.
@@ -264,13 +261,10 @@ def CastNet(mu, k, iz, npop, npk, data, cosmo, recon, derPalpha, BAO_only):
                 cosmo.sigma8[iz],
                 BAO_only,
             )
-            derP *= Dfactor[j, i]
 
-            covP, cov_inv = compute_inv_cov(
-                npop, npk, kaiser[:, j], pkval[i] * Dfactor[j, i], data.nbar[:, iz]
-            )
+            covP, cov_inv = compute_inv_cov(npop, npk, kaiser[:, j], pkval[i], data.nbar[:, iz])
 
-            Shoal[:, :, i, j] = kval ** 2 * (derP @ cov_inv @ derP.T)
+            Shoal[:, :, i, j] = kval ** 2 * (derP @ cov_inv @ derP.T) * Dfactor[j, i] ** 2
 
     return Shoal
 
@@ -405,7 +399,7 @@ def compute_full_deriv(npop, npk, kaiser, pk, pksmooth, mu, derPalpha, f, sigma8
         # Derivative of mu'**2 w.r.t alpha_perp. Derivative w.r.t. alpha_par is -dmudalpha
         dmudalpha = 2.0 * mu ** 2 * (1.0 - mu ** 2)
 
-        # We then just need use the product rule as we already precomputed dP(k')/dalpha
+        # We then just need use to the product rule as we already precomputed dP(k')/dalpha
         derP[npop + 1, :] = [
             (kaiser[i] + kaiser[j]) * f * pk * dmudalpha + kaiser[i] * kaiser[j] * derPalpha[0]
             for i in range(npop)

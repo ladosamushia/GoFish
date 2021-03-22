@@ -25,7 +25,7 @@ if __name__ == "__main__":
     data.scale_bias(cosmo.growth)
 
     # Precompute some things we might need for the Fisher matrix
-    recon, derPalpha = Set_Bait(cosmo, data, BAO_only=pardict.as_bool("BAO_only"))
+    recon, derPalpha, derPalpha_BAO_only = Set_Bait(cosmo, data, BAO_only=pardict.as_bool("BAO_only"))
 
     # Loop over redshifts and compute the Fisher matrix and output the 3x3 matrix
     identity = np.eye(len(data.nbar) + 3)
@@ -35,8 +35,32 @@ if __name__ == "__main__":
         if np.any(data.nz[:, iz] > 1.0e-30):
 
             Catch = Fish(
-                cosmo, data, iz, recon[iz], derPalpha, pardict.as_bool("BAO_only"), pardict.as_bool("GoFast")
+                cosmo,
+                cosmo.kmin,
+                cosmo.kmax,
+                data,
+                iz,
+                recon[iz],
+                derPalpha,
+                pardict.as_bool("BAO_only"),
+                pardict.as_bool("GoFast"),
             )
+            # print(Catch)
+
+            # Add on BAO only information from kmax to k = 0.5 Mpc/h but only for alpha_perp and alpha_par
+            ExtraCatch = Fish(
+                cosmo,
+                cosmo.kmax,
+                0.5,
+                data,
+                iz,
+                recon[iz],
+                derPalpha_BAO_only,
+                True,
+                pardict.as_bool("GoFast"),
+            )
+            Catch[-2:, -2:] += ExtraCatch[-2:, -2:]
+            # print(Catch)
 
             # Invert the Fisher matrix to get the parameter covariance matrix
             cov = dgesv(Catch, identity)[2]

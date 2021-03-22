@@ -162,24 +162,31 @@ class CosmoResults:
             else:
                 print("Error: Neither ln10^{10}A_s nor A_s given in config file")
                 exit()
-        if "H0" not in parlinear.keys():
-            if "h" in parlinear.keys():
-                parlinear["H0"] = 100.0 * float(parlinear["h"])
-            else:
-                print("Error: Neither H0 nor h given in config file")
-                exit()
+        if "H0" in parlinear.keys():
+            parlinear["H0"] = float(parlinear["H0"])
+            parlinear["thetastar"] = None
+        elif "h" in parlinear.keys():
+            parlinear["H0"] = 100.0 * float(parlinear["h"])
+            parlinear["thetastar"] = None
+        elif "thetastar" in parlinear.keys():
+            parlinear["thetastar"] = float(parlinear["thetastar"])
+            parlinear["H0"] = None
+        else:
+            print("Error: Neither H0 nor h nor theta_s given in config file")
+            exit()
         if "w0_fld" in parlinear.keys():
             pars.set_dark_energy(w=float(parlinear["w0_fld"]), dark_energy_model="fluid")
         pars.InitPower.set_params(As=float(parlinear["A_s"]), ns=float(parlinear["n_s"]))
-        pars.set_matter_power(redshifts=np.concatenate([zmid[::-1], [0.0]]), kmax=float(parlinear["kmax"]))
+        pars.set_matter_power(redshifts=np.concatenate([zmid[::-1], [0.0]]), kmax=0.6)
         pars.set_cosmology(
-            H0=float(parlinear["H0"]),
+            H0=parlinear["H0"],
             omch2=float(parlinear["omega_cdm"]),
             ombh2=float(parlinear["omega_b"]),
             omk=float(parlinear["Omega_k"]),
             tau=float(parlinear["tau_reio"]),
             mnu=float(parlinear["Sum_mnu"]),
             neutrino_hierarchy=parlinear["nu_hierarchy"],
+            thetastar=parlinear["thetastar"],
         )
         pars.NonLinear = camb.model.NonLinear_none
 
@@ -187,14 +194,12 @@ class CosmoResults:
         results = camb.get_results(pars)
 
         # Get the power spectrum
-        kin, zin, pklin = results.get_matter_power_spectrum(
-            minkh=2.0e-5, maxkh=1.1 * float(parlinear["kmax"]), npoints=200
-        )
+        kin, zin, pklin = results.get_matter_power_spectrum(minkh=2.0e-5, maxkh=0.6, npoints=500)
 
         # Get some derived quantities
         area = float(pardict["skyarea"]) * (np.pi / 180.0) ** 2
-        rmin = results.comoving_radial_distance(zlow) * float(parlinear["H0"]) / 100.0
-        rmax = results.comoving_radial_distance(zhigh) * float(parlinear["H0"]) / 100.0
+        rmin = results.comoving_radial_distance(zlow) * pars.H0 / 100.0
+        rmax = results.comoving_radial_distance(zhigh) * pars.H0 / 100.0
         volume = area / 3.0 * (rmax ** 3 - rmin ** 3)
         da = results.angular_diameter_distance(zmid)
         hubble = results.hubble_parameter(zmid)

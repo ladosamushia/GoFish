@@ -154,7 +154,7 @@ def Fish(cosmo, kmin, kmax, data, iz, recon, derPalpha, BAO_only=True, GoFast=Fa
 
     else:
         # Integral over mu
-        OneFish = lambda *args: quad(CastNet, 0.0, 1.0, args=args, limit=1000, epsabs=1.0e-5, epsrel=1.0e-5)[
+        OneFish = lambda *args: quad(CastNet, 0.0, 1.0, args=args, limit=10000, epsabs=1.0e-6, epsrel=1.0e-6)[
             0
         ]
 

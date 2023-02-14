@@ -26,15 +26,15 @@ def compute_recon(cosmo, data):
     muconst = 0.6
     kconst = 0.14
 
-    nP = [0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 6.0, 10.0]
-    r_factor = [1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.52, 0.5]
+    nP = np.array([0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 6.0, 10.0])
+    r_factor = np.array([1.0, 0.9, 0.8, 0.7, 0.6, 0.55, 0.52, 0.5])
     r_spline = splrep(nP, r_factor)
 
     recon = np.empty(len(cosmo.z))
     kaiser_vec = data.bias + cosmo.f * muconst ** 2
     nbar_comb = np.sum(data.nbar * kaiser_vec ** 2, axis=0)
     for iz in range(len(cosmo.z)):
-        nP_comb = nbar_comb[iz] * splev(kconst, cosmo.pk[iz])
+        nP_comb = nbar_comb[iz] * splev(kconst, cosmo.pk[iz]) / 0.1734
         if nP_comb <= nP[0]:
             recon[iz] = r_factor[0]
         elif nP_comb >= nP[-1]:

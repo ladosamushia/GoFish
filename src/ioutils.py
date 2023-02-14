@@ -7,10 +7,11 @@ class InputData:
 
         df = self.read_nbar(pardict)
 
-        self.zmin = df[:, 0]
-        self.zmax = df[:, 1]
-        self.nz = df[:, 2::2].T
-        self.bias = df[:, 3::2].T
+        self.zmin = df[" zmin"].to_numpy()
+        self.zmax = df["zmax"].to_numpy()
+        self.nz = np.array([df[i] for i in df.keys() if "nz" in i])
+        self.bias = np.array([df[i] for i in df.keys() if "bias" in i])
+        self.volume = df["volume"].to_numpy() if "volume" in df.keys() else -np.ones(len(df))
 
         # Sort out any tracers without galaxies in a particular redshift bin
         self.remove_null_tracers()
@@ -30,15 +31,8 @@ class InputData:
         """
         import pandas as pd
 
-        df = np.array(
-            pd.read_csv(
-                pardict["inputfile"],
-                comment="#",
-                delim_whitespace=True,
-                dtype="float",
-                header=None,
-                skiprows=0,
-            )
+        df = pd.read_csv(
+            pardict["inputfile"], delim_whitespace=True, dtype="float", skiprows=0, escapechar="#"
         )
 
         return df
@@ -61,7 +55,7 @@ class InputData:
         """
 
         dz = self.zmax - self.zmin
-        self.nbar = skyarea * self.nz * dz / volume
+        self.nbar = skyarea * self.nz * (dz / volume)
 
     def scale_bias(self, growth):
         self.bias /= growth
@@ -177,7 +171,7 @@ class CosmoResults:
         if "w0_fld" in parlinear.keys():
             pars.set_dark_energy(w=float(parlinear["w0_fld"]), dark_energy_model="fluid")
         pars.InitPower.set_params(As=float(parlinear["A_s"]), ns=float(parlinear["n_s"]))
-        pars.set_matter_power(redshifts=np.concatenate([zmid[::-1], [0.0]]), kmax=0.6)
+        pars.set_matter_power(redshifts=np.concatenate([zmid[::-1], [0.0]]), kmax=5.0)
         pars.set_cosmology(
             H0=parlinear["H0"],
             omch2=float(parlinear["omega_cdm"]),
@@ -194,7 +188,7 @@ class CosmoResults:
         results = camb.get_results(pars)
 
         # Get the power spectrum
-        kin, zin, pklin = results.get_matter_power_spectrum(minkh=2.0e-5, maxkh=0.6, npoints=500)
+        kin, zin, pklin = results.get_matter_power_spectrum(minkh=2.0e-5, maxkh=5.0, npoints=2000)
 
         # Get some derived quantities
         area = float(pardict["skyarea"]) * (np.pi / 180.0) ** 2

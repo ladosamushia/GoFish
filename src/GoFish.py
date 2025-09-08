@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     # Set up the linear power spectrum and derived parameters based on the input cosmology
     cosmo = CosmoResults(pardict, data.zmin, data.zmax)
-    if np.any(data.volume > 0):
+    if np.all(data.volume > 0):
         cosmo.volume = data.volume * 1.0e9
 
     console.log("computed CAMB linear matter power spectra for redshifts.")

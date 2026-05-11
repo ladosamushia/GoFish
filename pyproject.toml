@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gofish"
+version = "0.2.0"
+description = "A lightweight Fisher forecast tool for DESI-style galaxy clustering surveys."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Cullan Howlett" },
+    { name = "Lado Samushia" },
+]
+keywords = ["cosmology", "fisher", "forecast", "galaxy-clustering", "desi", "bao"]
+dependencies = [
+    "numpy>=1.20",
+    "scipy>=1.6",
+    "pandas>=1.3",
+    "camb>=1.3",
+    "findiff>=0.10",
+    "matplotlib>=3.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov", "ruff", "mypy"]
+
+[project.scripts]
+gofish = "gofish.cli:main"
+gofish-plot = "gofish.plotting:_cli_main"
+
+[tool.setuptools.packages.find]
+include = ["gofish*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"

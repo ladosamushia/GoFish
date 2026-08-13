@@ -112,13 +112,26 @@ class Cosmology:
         pars.NonLinear = camb.model.NonLinear_none
 
         results = camb.get_results(pars)
-        kin, _, pklin = results.get_matter_power_spectrum(
-            minkh=2.0e-5, maxkh=5.0, npoints=2000
+
+        kin, z_pk, pklin = results.get_matter_power_spectrum(
+            minkh=2.0e-5,
+            maxkh=5.0,
+            npoints=2000
         )
 
-        # CAMB returns redshifts in the order we passed them (then sorted),
-        # so flip back and drop the z=0 entry.
-        pklin_ordered = pklin[::-1][1:]
+        z_pk = np.asarray(z_pk)
+
+        idx = np.array([
+            np.argmin(np.abs(z_pk - z))
+            for z in zmid
+        ])
+
+        if not np.allclose(z_pk[idx], zmid, rtol=0.0, atol=1.e-8):
+            raise RuntimeError(
+                f"Could not match CAMB redshifts {z_pk} to GoFish bins {zmid}"
+            )
+
+        pklin_ordered = pklin[idx]
 
         # Derived quantities
         area_sr = config.skyarea * (np.pi / 180.0) ** 2

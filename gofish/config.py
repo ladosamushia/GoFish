@@ -40,10 +40,12 @@ class ForecastConfig:
     Omega_k: float = 0.0
     nu_hierarchy: str = "degenerate"
     w0_fld: Optional[float] = None
+    wa_fld: Optional[float] = None
 
     # Forecasting parameters
     kmin: float = 0.001
     kmax: float = 0.5
+    kmax_bao: Optional[float] = None  # BAO-only extension ceiling; None -> stop at kmax
     skyarea: float = 14000.0  # square degrees
     scale_bias: bool = True
     BAO_only: bool = True

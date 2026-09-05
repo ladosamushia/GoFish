@@ -92,10 +92,18 @@ class Cosmology:
         zmid = 0.5 * (zlow + zhigh)
 
         pars = camb.CAMBparams()
-        if config.w0_fld is not None:
-            pars.set_dark_energy(w=config.w0_fld, dark_energy_model="fluid")
-        pars.InitPower.set_params(As=config.A_s, ns=config.n_s)
 
+        if config.w0_fld is not None or config.wa_fld is not None:
+            w0 = -1.0 if config.w0_fld is None else config.w0_fld
+            wa = 0.0 if config.wa_fld is None else config.wa_fld
+
+            pars.set_dark_energy(
+                w=w0,
+                wa=wa,
+                dark_energy_model="ppf",
+            )
+
+        pars.InitPower.set_params(As=config.A_s, ns=config.n_s)
         # CAMB wants redshifts in descending order, plus z=0 for normalisation.
         camb_redshifts = np.concatenate([zmid[::-1], [0.0]])
         pars.set_matter_power(redshifts=camb_redshifts, kmax=5.0)

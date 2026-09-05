@@ -1,0 +1,2 @@
+# zmin zmax nz_DESI bias_DESI
+0.600 0.800 804.28770810 1.450000

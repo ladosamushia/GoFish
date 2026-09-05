@@ -178,16 +178,18 @@ def _process_redshift_bin(
         fast_integration=config.fast_integration,
     )
 
-    # Add BAO-only information from kmax to 0.5 h/Mpc for the alpha parameters only
-    fisher_extra = compute_fisher_matrix(
-        cosmo, data, iz,
-        recon=recon[iz],
-        der_p_alpha=der_alpha_bao,
-        kmin=cosmo.kmax, kmax=0.5,
-        BAO_only=True,
-        fast_integration=config.fast_integration,
-    )
-    fisher[-2:, -2:] += fisher_extra[-2:, -2:]
+    # Optionally extend BAO-only information above kmax for the alphas.
+    kmax_bao = cosmo.kmax if config.kmax_bao is None else config.kmax_bao
+    if kmax_bao > cosmo.kmax:
+        fisher_extra = compute_fisher_matrix(
+            cosmo, data, iz,
+            recon=recon[iz],
+            der_p_alpha=der_alpha_bao,
+            kmin=cosmo.kmax, kmax=kmax_bao,
+            BAO_only=True,
+            fast_integration=config.fast_integration,
+        )
+        fisher[-2:, -2:] += fisher_extra[-2:, -2:]
 
     # Accumulate into the full multi-z Fisher matrix
     z_slice = slice(iz * n_tracers, (iz + 1) * n_tracers)
